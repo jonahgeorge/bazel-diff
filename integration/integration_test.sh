@@ -8,7 +8,7 @@ final_revision="HEAD"
 output_dir="/tmp"
 modified_filepaths_output="$workspace_path/modified_filepaths.txt"
 starting_hashes_json="$output_dir/starting_hashes.json"
-final_hashes_json="$output_dir/final_hashes_json.json"
+final_hashes_json="$output_dir/final_hashes.json"
 impacted_targets_path="$output_dir/impacted_targets.txt"
 shared_flags="--config=verbose"
 
@@ -44,8 +44,32 @@ then
         exit 1
     else
         echo "Correct impacted targets: ${impacted_targets[@]}"
-        exit 0
     fi
+else
+    echo "Incorrect impacted targets: ${impacted_targets[@]}"
+    exit 1
+fi
+
+echo "Testing rules_docker config change"
+
+docker_modified_filepaths_output=/tmp/docker_modified_filepaths_output.txt
+
+ruby ./integration/create_rules_docker_buildfile.rb wget
+
+$bazel_path run :bazel-diff $shared_flags -- generate-hashes -w $workspace_path -b $bazel_path $starting_hashes_json
+
+ruby ./integration/create_rules_docker_buildfile.rb curl
+echo "BUILD.bazel" >> $docker_modified_filepaths_output
+
+$bazel_path run :bazel-diff $shared_flags -- generate-hashes -w $workspace_path -b $bazel_path -m $docker_modified_filepaths_output $final_hashes_json
+
+$bazel_path run :bazel-diff $shared_flags -- -sh $starting_hashes_json -fh $final_hashes_json -w $workspace_path -b $bazel_path -o $impacted_targets_path -aq "attr('tags', 'manual', //...)"
+
+IFS=$'\n' read -d '' -r -a impacted_targets < $impacted_targets_path
+target1="//:base_packages"
+if containsElement $target1 "${impacted_targets[@]}"
+then
+    echo "Correct impacted targets: ${impacted_targets[@]}"
 else
     echo "Incorrect impacted targets: ${impacted_targets[@]}"
     exit 1

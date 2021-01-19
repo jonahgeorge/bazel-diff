@@ -1,0 +1,40 @@
+load("@io_bazel_rules_docker//container:container.bzl", "container_image")
+load("@io_bazel_rules_docker//docker/util:run.bzl", "container_run_and_commit_layer")
+load("@io_bazel_rules_docker//docker/package_managers:download_pkgs.bzl", "download_pkgs")
+load("@io_bazel_rules_docker//docker/package_managers:install_pkgs.bzl", "install_pkgs")
+
+# Base docker image for our Scala services
+download_pkgs(
+    name = "base_packages",
+    image_tar = "@openjdk_11_slim//image",
+    packages = [
+        "<%= packages %>",
+    ],
+)
+
+install_pkgs(
+    name = "install_base_packages",
+    image_tar = "@openjdk_11_slim//image",
+    installables_tar = ":base_packages.tar",
+    installation_cleanup_commands = "rm -rf /var/lib/apt/lists/*",
+    output_image_name = "install_base_packages",
+)
+
+container_run_and_commit_layer(
+    name = "base_run_commands",
+    commands = [
+        "wget -O /bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.3.6/grpc_health_probe-linux-amd64",
+        "chmod +x /bin/grpc_health_probe",
+    ],
+    image = "install_base_packages.tar",
+)
+
+container_image(
+    name = "scala_base_image",
+    base = "@openjdk_11_slim//image",
+    layers = ["base_run_commands"],
+    symlinks = {
+        "/usr/bin/java": "/usr/local/openjdk-11/bin/java",
+    },
+    visibility = ["//visibility:public"],
+)
